@@ -6,17 +6,27 @@ namespace VoltorbLens;
 public sealed class Overlay : Form
 {
     public bool CaptureExcluded {get;private set;}
-    public Overlay() { FormBorderStyle=FormBorderStyle.None; ShowInTaskbar=false; TopMost=true; StartPosition=FormStartPosition.Manual; }
+    bool? captureExclusionRequested;
+    public Overlay() { Text="Voltorb Lens Overlay (OBS)"; FormBorderStyle=FormBorderStyle.None; ShowInTaskbar=true; TopMost=true; StartPosition=FormStartPosition.Manual; }
+    public void SetCaptureExcluded(bool excluded)
+    {
+        if(!IsHandleCreated) return;
+        if(captureExclusionRequested==excluded)return;
+        bool wasExcluded=captureExclusionRequested==true;
+        captureExclusionRequested=excluded;
+        CaptureExcluded=excluded && Environment.OSVersion.Version.Build>=19041 && Native.SetWindowDisplayAffinity(Handle,0x11);
+        if(!excluded && wasExcluded) Native.SetWindowDisplayAffinity(Handle,0);
+    }
     protected override bool ShowWithoutActivation=>true;
-    protected override CreateParams CreateParams { get { var p=base.CreateParams; p.ExStyle|=0x80000|0x20|0x80|0x08000000; return p; } }
-    protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); CaptureExcluded=Environment.OSVersion.Version.Build>=19041 && Native.SetWindowDisplayAffinity(Handle,0x11); }
+    protected override CreateParams CreateParams { get { var p=base.CreateParams; p.ExStyle=(p.ExStyle&~0x80)|0x80000|0x20|0x40000|0x08000000; return p; } }
+    protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); SetCaptureExcluded(false); }
     protected override void WndProc(ref Message m) { if(m.Msg==0x84) {m.Result=-1;return;} if(m.Msg==0x21){m.Result=3;return;} base.WndProc(ref m); }
     public void Render(Rectangle area, Board board, SolveResult result, Settings settings)
     {
         if(area.Width<48||area.Height<48)return;
         Bounds=area;
         if(!Visible)Show();
-        if(!CaptureExcluded && Environment.OSVersion.Version.Build>=19041) CaptureExcluded=Native.SetWindowDisplayAffinity(Handle,0x11);
+        SetCaptureExcluded(!settings.ShowOverlayInCapture);
         using var image=new Bitmap(area.Width,area.Height,PixelFormat.Format32bppArgb);
         using var g=Graphics.FromImage(image);
         g.CompositingMode=CompositingMode.SourceOver; g.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;

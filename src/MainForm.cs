@@ -10,6 +10,7 @@ public sealed class MainForm : Form
     readonly TextBox preview=new(){Multiline=true,ReadOnly=true,Width=480,Height=180,Font=new Font("Consolas",11),ScrollBars=ScrollBars.Vertical};
     readonly Button start=new(){Text="계산 시작",AutoSize=true};
     readonly Overlay overlay=new();
+    readonly ObsCaptureWindow obsCapture=new();
     readonly Recognition recognizer=new(Path.Combine(AppContext.BaseDirectory,"assets"));
     readonly System.Windows.Forms.Timer timer=new(){Interval=200};
     readonly RoundTracker rounds=new();
@@ -23,6 +24,8 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
+        var embeddedIcon=Icon.ExtractAssociatedIcon(Environment.ProcessPath??Application.ExecutablePath);
+        if(embeddedIcon is not null)Icon=embeddedIcon;
         Text="찌리리공 렌즈 · Voltorb Lens";ClientSize=new Size(525,690);MinimumSize=new Size(530,720);
         Font=new Font("Malgun Gothic",10);BackColor=Color.FromArgb(22,28,39);ForeColor=Color.White;AutoScaleMode=AutoScaleMode.Dpi;
         var flow=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true,Padding=new Padding(18)};Controls.Add(flow);
@@ -34,6 +37,7 @@ public sealed class MainForm : Form
         Add("창 새로고침",RefreshWindows);Add("수동 영역",PickRegion);start.FlatStyle=FlatStyle.Flat;start.BackColor=Color.FromArgb(25,100,128);buttons.Controls.Add(start);start.Click+=(_,_)=>Start();Add("중지",()=>Stop("중지됨"));
         void Toggle(string text,bool initial,Action<bool> action){var c=new CheckBox{Text=text,Checked=initial,AutoSize=true};c.CheckedChanged+=(_,_)=>{action(c.Checked);Save();};flow.Controls.Add(c);}
         Toggle("새 라운드 자동 인식",settings.AutoRound,v=>settings.AutoRound=v);
+        Toggle("OBS 캡처에 확률 표시",settings.ShowOverlayInCapture,v=>{settings.ShowOverlayInCapture=v;overlay.SetCaptureExcluded(!v);if(!v)obsCapture.Clear();Save();Render();});
         Toggle("제어창 항상 위에",settings.AlwaysTop,v=>{settings.AlwaysTop=v;TopMost=v;});TopMost=settings.AlwaysTop;
         Toggle("인식 결과 보기",settings.ShowRecognition,v=>{settings.ShowRecognition=v;preview.Visible=v;});
         void Slider(string text,int initial,Action<int> action){var label=new Label{Text=$"{text}: {100-initial}%",AutoSize=true};flow.Controls.Add(label);var s=new TrackBar{Minimum=0,Maximum=100,Value=100-initial,TickFrequency=25,Width=470,Height=40};s.ValueChanged+=(_,_)=>{label.Text=$"{text}: {s.Value}%";action(100-s.Value);Save();Render();};flow.Controls.Add(s);}
@@ -72,31 +76,36 @@ public sealed class MainForm : Form
         recognitionFailures=0;nextSearch=DateTime.MinValue;
         Stop("");rounds.Reset();running=true;status.Text="인식 대기 · 에뮬 창을 활성화하세요.";Native.SetForegroundWindow(target);
     }
-    void CancelCalculation(){generation++;solveCancellation?.Cancel();solveCancellation=null;solvingKey=null;result=null;overlay.Hide();statistics.Text="";}
+    void HideOverlays(){overlay.Hide();obsCapture.Clear();}
+    void CancelCalculation(){generation++;solveCancellation?.Cancel();solveCancellation=null;solvingKey=null;result=null;HideOverlays();statistics.Text="";}
     void Stop(string message){running=false;CancelCalculation();candidateKey=null;stableFrames=0;current=null;status.Text=message;}
     async Task Tick()
     {
         if(!running||busy||selecting||IsDisposed)return;
         if(!Native.IsWindow(target)){Stop("에뮬 창이 종료되었습니다. 창을 다시 선택하세요.");return;}
         nint foreground=Native.GetForegroundWindow();
-        if(Native.IsIconic(target)||foreground!=target && foreground!=Handle){overlay.Hide();status.Text="대기 · 에뮬 창으로 돌아오면 다시 확인합니다.";candidateKey=null;stableFrames=0;return;}
+        if(Native.IsIconic(target)||!settings.ShowOverlayInCapture && foreground!=target && foreground!=Handle){HideOverlays();status.Text="대기 · 에뮬 창으로 돌아오면 다시 확인합니다.";candidateKey=null;stableFrames=0;return;}
         var capturedClient=Native.ClientBounds(target);
         bool searching=!settings.HasRegion||(!manualRegion&&recognitionFailures>=5);
         var area=searching?capturedClient:settings.Map(capturedClient);
         if(!searching&&!manualRegion&&!capturedClient.Contains(Recognition.RequiredPixels(area))){searching=true;area=capturedClient;}
         if(searching&&DateTime.UtcNow<nextSearch)return;
-        if(area.Width<96||area.Height<96||!SystemInformation.VirtualScreen.Contains(searching?area:Recognition.RequiredPixels(area))){overlay.Hide();status.Text="대기 · 카드와 힌트 숫자가 화면 안에 있어야 합니다.";return;}
+        if(area.Width<96||area.Height<96||!SystemInformation.VirtualScreen.Contains(searching?area:Recognition.RequiredPixels(area))){HideOverlays();status.Text="대기 · 카드와 힌트 숫자가 화면 안에 있어야 합니다.";return;}
         // A control panel covering the board must never be interpreted as game pixels.
-        if(Visible && Bounds.IntersectsWith(area) && (foreground==Handle||TopMost)){overlay.Hide();status.Text="제어창을 보드 밖으로 옮겨 주세요.";return;}
+        if(Visible && Bounds.IntersectsWith(area) && (foreground==Handle||TopMost)){HideOverlays();status.Text="제어창을 보드 밖으로 옮겨 주세요.";return;}
         busy=true;
         try
         {
             var expanded=searching?capturedClient:Rectangle.Inflate(area,Math.Max(12,area.Width/10),Math.Max(12,area.Height/10));expanded.Intersect(capturedClient);
-            if(searching){nextSearch=DateTime.UtcNow.AddSeconds(1);status.Text="보드 위치 자동 탐색 중 · 게임 화면을 열어 주세요.";overlay.Hide();}
-            if(overlay.Visible&&!overlay.CaptureExcluded){overlay.Hide();Native.DwmFlush();}
-            using var capture=Native.Capture(expanded);int capturedGeneration=generation;
+            if(searching){nextSearch=DateTime.UtcNow.AddSeconds(1);status.Text="보드 위치 자동 탐색 중 · 게임 화면을 열어 주세요.";HideOverlays();}
+            int capturedGeneration=generation;
+            var capturedTarget=target;
+            // Capture on a worker: PrintWindow can wait for the emulator to paint.
+            // Never hide a broadcast-visible overlay just to read the game.
+            bool directCapture=settings.ShowOverlayInCapture || (overlay.Visible && !overlay.CaptureExcluded);
             var expected=new Rectangle(area.X-expanded.X,area.Y-expanded.Y,area.Width,area.Height);
             var recognized=await Task.Run(()=>{
+                using var capture=directCapture?Native.CaptureWindow(capturedTarget,capturedClient,expanded):Native.Capture(expanded);
                 if(searching)return recognizer.FindBoard(capture);
                 try{return(Board:recognizer.ReadRegion(capture,expected),Region:expected);}
                 catch(Exception ex) when(ex is InvalidOperationException or ArgumentException){if(recognitionFailures%5!=0)throw;return recognizer.Align(capture,expected);}
@@ -109,12 +118,12 @@ public sealed class MainForm : Form
                 area=new Rectangle(expanded.X+recognized.Region.X,expanded.Y+recognized.Region.Y,recognized.Region.Width,recognized.Region.Height);
                 var client=Native.ClientBounds(target);settings.ClientWidth=client.Width;settings.ClientHeight=client.Height;settings.X=area.X-client.X;settings.Y=area.Y-client.Y;settings.Width=area.Width;settings.Height=area.Height;Save();
             }
-            if(area!=lastArea){overlay.Hide();lastArea=area;}
+            if(area!=lastArea){HideOverlays();lastArea=area;}
             if(candidateKey!=board.Key){candidateKey=board.Key;stableFrames=1;CancelCalculation();status.Text="인식 중 · 화면 안정화 확인";return;}
             if(++stableFrames<3)return;
             current=board;UpdatePreview(board);
             if(!rounds.Accept(board,settings.AutoRound)){CancelCalculation();status.Text=rounds.AwaitingStart?"판 종료 / 새 판 대기 · 계산 시작을 눌러 주세요.":"판 종료 · 새 라운드 인식 대기";return;}
-            if(result is not null){Render();return;}
+            if(result is not null)return;
             if(solvingKey==board.Key)return;
             solvingKey=board.Key;var cts=new CancellationTokenSource();solveCancellation=cts;int version=generation;
             status.Text="계산 중 · 3초 후에도 표본이 부족하면 계속 계산합니다.";
@@ -134,7 +143,7 @@ public sealed class MainForm : Form
             Render();
         }
         catch(OperationCanceledException){}
-        catch(Exception ex){if(version==generation&&!IsDisposed){status.Text=ex.Message;overlay.Hide();}}
+        catch(Exception ex){if(version==generation&&!IsDisposed){status.Text=ex.Message;HideOverlays();}}
         finally{if(ReferenceEquals(solveCancellation,cts))solveCancellation=null;cts.Dispose();}
     }
     void UpdatePreview(Board b)
@@ -144,10 +153,11 @@ public sealed class MainForm : Form
     void Render()
     {
         if(!running||!settings.HasRegion||current is null||result is null)return;
-        var foreground=Native.GetForegroundWindow();if(foreground!=target&&foreground!=Handle)return;
+        var foreground=Native.GetForegroundWindow();if(!settings.ShowOverlayInCapture&&foreground!=target&&foreground!=Handle)return;
         var area=settings.Map(Native.ClientBounds(target));overlay.Render(area,current,result,settings);
+        if(settings.ShowOverlayInCapture)obsCapture.Render(area,current,result,settings);else obsCapture.Clear();
         status.Text=result.Exact?"정확 계산 완료":"근삿값 표시 · 계산 종료";
-        if(!overlay.CaptureExcluded)status.Text+=" · 캡처 호환 모드";
+        if(settings.ShowOverlayInCapture)status.Text+=" · 방송 캡처 표시";
     }
-    protected override void Dispose(bool disposing){if(disposing){timer.Dispose();overlay.Dispose();if(!busy)recognizer.Dispose();}base.Dispose(disposing);}
+    protected override void Dispose(bool disposing){if(disposing){timer.Dispose();overlay.Dispose();obsCapture.Dispose();if(!busy)recognizer.Dispose();}base.Dispose(disposing);}
 }

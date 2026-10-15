@@ -15,12 +15,14 @@ public static class Native
     [DllImport("user32.dll")] public static extern bool IsIconic(nint h);
     [DllImport("user32.dll")] public static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(nint h);
+    [DllImport("user32.dll",SetLastError=true)] public static extern bool SetWindowPos(nint h,nint after,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(nint h,StringBuilder b,int n);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(nint h,out uint pid);
     [DllImport("user32.dll")] static extern bool GetClientRect(nint h,out Rect r);
     [DllImport("user32.dll")] static extern bool ClientToScreen(nint h,ref Point p);
     [DllImport("user32.dll",SetLastError=true)] public static extern bool SetWindowDisplayAffinity(nint h,uint affinity);
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
+    [DllImport("user32.dll",SetLastError=true)] static extern bool PrintWindow(nint window,nint dc,uint flags);
     [DllImport("user32.dll")] public static extern nint WindowFromPoint(Point p);
     [DllImport("user32.dll")] public static extern nint GetAncestor(nint h,uint flags);
     [DllImport("user32.dll")] static extern nint GetDC(nint h);
@@ -53,6 +55,25 @@ public static class Native
         var bitmap=new Bitmap(area.Width,area.Height,PixelFormat.Format32bppArgb);
         try { using var g=Graphics.FromImage(bitmap); g.CopyFromScreen(area.Location,Point.Empty,area.Size,CopyPixelOperation.SourceCopy); return bitmap; }
         catch { bitmap.Dispose(); throw; }
+    }
+    // Read the emulator's own surface, without hiding the separate probability window.
+    public static Bitmap CaptureWindow(nint window, Rectangle client, Rectangle area)
+    {
+        if(client.Width<=0 || client.Height<=0 || !client.Contains(area))
+            throw new InvalidOperationException("에뮬 창 크기가 바뀌었습니다. 다시 인식합니다.");
+        using var bitmap=new Bitmap(client.Width,client.Height,PixelFormat.Format32bppArgb);
+        using(var g=Graphics.FromImage(bitmap))
+        {
+            var dc=g.GetHdc();
+            try
+            {
+                const uint ClientOnly=1, RenderFullContent=2;
+                if(!PrintWindow(window,dc,ClientOnly|RenderFullContent))
+                    throw new InvalidOperationException("에뮬 창을 직접 읽지 못했습니다. 캡처 표시를 끄거나 에뮬 화면 설정을 확인하세요.");
+            }
+            finally{g.ReleaseHdc(dc);}
+        }
+        return bitmap.Clone(new Rectangle(area.X-client.X,area.Y-client.Y,area.Width,area.Height),PixelFormat.Format32bppArgb);
     }
     public static void Layer(nint handle, Bitmap bitmap, Point location)
     {

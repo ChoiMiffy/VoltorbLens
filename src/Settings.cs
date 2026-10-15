@@ -13,6 +13,7 @@ public sealed class Settings
     public bool AutoRound {get;set;}=true;
     public bool AlwaysTop {get;set;}
     public bool ShowRecognition {get;set;}
+    public bool ShowOverlayInCapture {get;set;}=true;
     public int TextAlpha {get;set;}=100;
     public int BackgroundAlpha {get;set;}=75;
     public bool HasRegion => ClientWidth>0 && ClientHeight>0 && Width>0 && Height>0;

@@ -30,6 +30,9 @@ Copy-Item (Join-Path $sourceRoot 'LICENSE'),(Join-Path $sourceRoot 'THIRD_PARTY.
 게임의 메모 기능은 끄고, 카드와 힌트 숫자가 모두 보이게 해 주세요.
 자동 탐색이 어려우면 수동 영역을 사용할 수 있습니다.
 
+OBS: 계산 시작 후 윈도우 캡처에서 "VoltorbLens.exe: VoltorbLens OBS Feed"를 선택하세요.
+이 소스에 크로마 키 필터를 추가해 마젠타색을 제거하고 게임 화면 위에 놓으세요.
+
 Windows 10/11 x64용. 별도 .NET 설치는 필요 없습니다.
 프로그램 폴더는 반드시 실행 파일과 함께 보관하세요.
 개인 설정은 실행 후 app/settings.json에 생성됩니다.

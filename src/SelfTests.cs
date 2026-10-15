@@ -45,7 +45,29 @@ public static class SelfTests
         Check("Independent brute-force oracle over partially open boards",()=>{var rng=new Random(731);for(int trial=0;trial<20;trial++){var v=Enumerable.Range(0,25).Select(_=>rng.Next(4)).ToArray();var cells=(int[])v.Clone();int[] holes={0,1,5,6};foreach(int i in holes)cells[i]=-1;var b=Board.FromValues(v,cells);long count=0;var bombs=new long[25];var reward=new long[25];for(int code=0;code<256;code++){var test=(int[])v.Clone();for(int k=0;k<4;k++)test[holes[k]]=(code>>(2*k))&3;var possible=Board.FromValues(test);if(possible.HintKey!=b.HintKey)continue;count++;for(int i=0;i<25;i++){if(test[i]==0)bombs[i]++;if(test[i]>=2)reward[i]++;}}var exact=new Solver(b).Enumerate(default);Assert(exact.Count==count);for(int i=0;i<25;i++){Assert(Math.Abs(exact.Bomb[i]-(double)bombs[i]/count)<1e-12);Assert(Math.Abs(exact.Reward[i]-(double)reward[i]/count)<1e-12);}}});
         Check("Bounded benchmark / cancellation on dense board",()=>{var dense=new Board(Enumerable.Repeat(new Clue(7,1),5).ToArray(),Enumerable.Repeat(new Clue(7,1),5).ToArray(),Enumerable.Repeat(-1,25).ToArray());using var cts=new CancellationTokenSource(TimeSpan.FromSeconds(8));var sw=Stopwatch.StartNew();try{var answer=new Solver(dense).SolveAsync(cts.Token).GetAwaiter().GetResult();log.Add($"BENCH dense: {(answer.Exact?"exact":"sample")} {answer.Count:N0}, {sw.Elapsed.TotalSeconds:0.000}s");Assert(answer.Exact||answer.Error<=.03);}catch(OperationCanceledException){Assert(sw.Elapsed.TotalSeconds<9);log.Add("BENCH dense: cancelled safely at 8 seconds");}});
         Check("Controller renders",()=>{using var form=new MainForm();form.Opacity=0;form.Show();Application.DoEvents();using var image=new Bitmap(form.Width,form.Height);form.DrawToBitmap(image,new Rectangle(Point.Empty,image.Size));image.Save(Path.Combine(AppContext.BaseDirectory,"ui-preview.png"));form.Hide();});
-        Check("Native overlay: capture exclusion/fallback and click-through",()=>{using var window=new Form{FormBorderStyle=FormBorderStyle.None,StartPosition=FormStartPosition.Manual,Bounds=new Rectangle(80,80,576,576),BackColor=Color.Green,ShowInTaskbar=false};window.Show();Application.DoEvents();Native.DwmFlush();var rect=window.Bounds;using var before=Native.Capture(rect);using var overlay=new Overlay();var b=Board.FromValues(varied);overlay.Render(rect,b,new Solver(b).Enumerate(default),new Settings());Application.DoEvents();Assert(Native.GetAncestor(Native.WindowFromPoint(new Point(100,100)),2)==window.Handle,"overlay intercepted hit test");if(!overlay.CaptureExcluded){overlay.Hide();Native.DwmFlush();log.Add("INFO native capture uses hide-during-capture fallback on this desktop");}using var after=Native.Capture(rect);for(int y=10;y<500;y+=31)for(int x=10;x<500;x+=31)Assert(before.GetPixel(x,y)==after.GetPixel(x,y),"overlay leaked into capture");overlay.Hide();window.Hide();});
+        Check("Window capture: live board updates under visible click-through overlay",()=>{
+            using var fixture=Fixture(mixed,assets);
+            using var window=new Form{StartPosition=FormStartPosition.Manual,Location=new Point(80,80),ClientSize=new Size(192,192),BackgroundImage=fixture,ShowInTaskbar=false,TopMost=true};
+            window.Show();Application.DoEvents();Native.DwmFlush();
+            var rect=Native.ClientBounds(window.Handle);
+            using var reader=new Recognition(assets);
+            using var overlay=new Overlay();
+            overlay.Render(rect,mixed,new Solver(mixed).Enumerate(default),new Settings());
+            overlay.SetCaptureExcluded(false);Application.DoEvents();Native.DwmFlush();
+            int visibilityChanges=0;overlay.VisibleChanged+=(_,_)=>visibilityChanges++;
+            Assert(!overlay.CaptureExcluded,"broadcast overlay excluded");
+            Assert(Native.GetAncestor(Native.WindowFromPoint(new Point(rect.X+20,rect.Y+20)),2)==window.Handle,"overlay intercepted hit test");
+            for(int i=0;i<8;i++){
+                using var captured=Native.CaptureWindow(window.Handle,rect,rect);
+                Assert(reader.Read(captured).Key==mixed.Key,"overlay polluted recognition");
+                Assert(overlay.Visible,"overlay hidden during capture");
+            }
+            var changed=mixed with{Cells=(int[])mixed.Cells.Clone()};changed.Cells[0]=varied[0];
+            using var next=Fixture(changed,assets);window.BackgroundImage=next;window.Refresh();Application.DoEvents();
+            using(var captured=Native.CaptureWindow(window.Handle,rect,rect))Assert(reader.Read(captured).Key==changed.Key,"captured stale board");
+            Assert(visibilityChanges==0,"overlay flickered during repeated captures");
+            overlay.Hide();window.Hide();
+        });
         log.Add($"{log.Count(x=>x.StartsWith("PASS "))} passed, {failures} failed");File.WriteAllLines(Path.Combine(AppContext.BaseDirectory,"test-results.txt"),log);return failures==0?0:1;
     }
 }
