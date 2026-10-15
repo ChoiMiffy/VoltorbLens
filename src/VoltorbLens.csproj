@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../assets/voltorb.ico</ApplicationIcon>
     <AssemblyName>VoltorbLens</AssemblyName>
   </PropertyGroup>
   <ItemGroup><Content Include="../assets/*.png" Link="assets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>

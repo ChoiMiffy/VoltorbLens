@@ -15,7 +15,8 @@ New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 dotnet publish (Join-Path $sourceRoot 'src/VoltorbLens.csproj') -c Release -r win-x64 --self-contained true -o $runtimeRoot -p:UseSharedCompilation=false -p:DebugType=None -p:DebugSymbols=false
 if($LASTEXITCODE -ne 0){throw '배포 빌드 실패'}
 $compiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-& $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll "/out:$releaseRoot/찌리리공 렌즈.exe" (Join-Path $PSScriptRoot 'Launcher.cs')
+& (Join-Path $PSScriptRoot 'make-icon.ps1') | Out-Null
+& $compiler /nologo /target:winexe "/win32icon:$(Join-Path $sourceRoot 'assets/voltorb.ico')" /reference:System.Windows.Forms.dll "/out:$releaseRoot/찌리리공 렌즈.exe" (Join-Path $PSScriptRoot 'Launcher.cs')
 if($LASTEXITCODE -ne 0){throw '실행 런처 빌드 실패'}
 Copy-Item (Join-Path $sourceRoot 'LICENSE'),(Join-Path $sourceRoot 'THIRD_PARTY.md') -Destination $runtimeRoot
 @"
