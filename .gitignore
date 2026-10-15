@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+dist/
+publish/
+settings.json
+*.log
+error.log
+ui-preview.png
+docs/conversation.*
+docs/CONVERSATION.md
+docs/verification/*.png
+docs/verification/*detail*
+docs/verification/*no-margins-*

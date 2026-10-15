@@ -1,0 +1,28 @@
+PASS Exact: 120 permutation boards, marginal bombs 20%
+PASS Opened card conditions reduce solution set to 96
+PASS Exact reward marginals
+PASS Independent rejection sample meets fixed Hoeffding budget
+PASS Fully observed board has exactly one solution
+PASS Inconsistent observation rejected
+PASS Cancellation is honored
+PASS Solve task terminates and returns exact when fast
+PASS Active solver cancellation leaves no worker running
+INFO forced timeout route: sample completed
+PASS Timeout route returns a complete unbiased estimate or exact result
+PASS Round: initial midgame, restart, auto toggle
+PASS Win detection requires all rewards, not all ones
+PASS Resize retains letterbox offsets and negative monitor coordinates
+PASS Approximate 0/1 never formatted as certainty
+PASS Recognition: all card states and clue digits
+PASS Recognition: unused bottom padding may be absent
+PASS Recognition: clipped clue pixels are rejected
+PASS Recognition: scaled 125%, 150%, 200%, 300%
+PASS Recognition refuses empty/transition screen
+PASS Recognition: bilinear 200% screen
+PASS Region registration corrects 4px drag offset
+PASS Independent brute-force oracle over partially open boards
+BENCH dense: exact 705,120, 0.503s
+PASS Bounded benchmark / cancellation on dense board
+PASS Controller renders
+PASS Native overlay: capture exclusion/fallback and click-through
+25 passed, 0 failed
