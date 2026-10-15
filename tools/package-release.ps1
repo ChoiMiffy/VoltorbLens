@@ -4,13 +4,13 @@ param(
 )
 $ErrorActionPreference='Stop'
 $sourceRoot=Split-Path $PSScriptRoot -Parent
-if(-not $OutputRoot){$OutputRoot=Join-Path (Split-Path $sourceRoot -Parent) '배포본'}
+if(-not $OutputRoot){$OutputRoot=Join-Path (Split-Path (Split-Path $sourceRoot -Parent) -Parent) 'releases'}
 $OutputRoot=[IO.Path]::GetFullPath($OutputRoot)
 $name="VoltorbLens-$Version"
 $releaseRoot=Join-Path $OutputRoot $name
 $archivePath=Join-Path $OutputRoot "$name.zip"
 if((Test-Path -LiteralPath $releaseRoot) -or (Test-Path -LiteralPath $archivePath)){throw '이 버전의 배포본이 이미 있습니다. 새 버전 이름을 사용하세요.'}
-$runtimeRoot=Join-Path $releaseRoot '프로그램'
+$runtimeRoot=Join-Path $releaseRoot 'app'
 New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 dotnet publish (Join-Path $sourceRoot 'src/VoltorbLens.csproj') -c Release -r win-x64 --self-contained true -o $runtimeRoot -p:UseSharedCompilation=false -p:DebugType=None -p:DebugSymbols=false
 if($LASTEXITCODE -ne 0){throw '배포 빌드 실패'}
@@ -31,7 +31,7 @@ Copy-Item (Join-Path $sourceRoot 'LICENSE'),(Join-Path $sourceRoot 'THIRD_PARTY.
 
 Windows 10/11 x64용. 별도 .NET 설치는 필요 없습니다.
 프로그램 폴더는 반드시 실행 파일과 함께 보관하세요.
-개인 설정은 실행 후 프로그램/settings.json에 생성됩니다.
+개인 설정은 실행 후 app/settings.json에 생성됩니다.
 다른 버전과 독립된 폴더에 풀어서 사용하세요.
 "@ | Set-Content -LiteralPath (Join-Path $releaseRoot '사용법.txt') -Encoding utf8
 @{version=$Version;builtAt=[DateTimeOffset]::Now.ToString('o');runtime='win-x64';selfContained=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtimeRoot 'version.json') -Encoding utf8
